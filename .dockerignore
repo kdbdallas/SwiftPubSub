@@ -1,0 +1,7 @@
+.git
+.build
+.DS_Store
+README.md
+swift-client
+__pycache__
+*.py[cod]

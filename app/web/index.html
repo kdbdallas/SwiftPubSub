@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SwiftPubSub</title>
+    <style>
+      :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+      body { max-width: 720px; margin: 3rem auto; padding: 0 1rem; background: #10141c; color: #eef2ff; }
+      form, #events { background: #19202c; border-radius: 12px; padding: 1.25rem; }
+      label { display: block; margin: .8rem 0 .3rem; font-weight: 600; }
+      input, textarea, button { box-sizing: border-box; width: 100%; border-radius: 8px; border: 1px solid #445068; padding: .7rem; font: inherit; }
+      input, textarea { background: #0f1520; color: inherit; }
+      textarea { min-height: 7rem; resize: vertical; }
+      button { margin-top: 1rem; border: 0; background: #6d5dfc; color: white; font-weight: 700; cursor: pointer; }
+      #status { color: #a5f3c6; } #events { white-space: pre-wrap; min-height: 5rem; overflow-wrap: anywhere; }
+      .hint { color: #abb7cf; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <h1>SwiftPubSub publisher</h1>
+    <p class="hint">Leave Session ID blank for the client-wide channel. A session channel is isolated from the client-wide channel and every other session.</p>
+    <form id="publisher">
+      <label for="clientId">Client ID</label>
+      <input id="clientId" value="123" pattern="[A-Za-z0-9_-]{1,128}" required>
+      <label for="sessionId">Session ID (optional)</label>
+      <input id="sessionId" value="777" pattern="[A-Za-z0-9_-]{1,128}">
+      <label for="message">Message</label>
+      <textarea id="message" required placeholder="Type a message…"></textarea>
+      <button>Publish</button>
+    </form>
+    <p id="status" aria-live="polite"></p>
+    <h2>Messages received on this browser's channel</h2>
+    <pre id="events"></pre>
+    <script>
+      const form = document.querySelector('#publisher');
+      const status = document.querySelector('#status');
+      const events = document.querySelector('#events');
+      let socket;
+
+      function ids() {
+        return { client: document.querySelector('#clientId').value.trim(), session: document.querySelector('#sessionId').value.trim() };
+      }
+      function socketURL() {
+        const { client, session } = ids();
+        const path = session ? `/ws/clients/${encodeURIComponent(client)}/sessions/${encodeURIComponent(session)}` : `/ws/clients/${encodeURIComponent(client)}`;
+        return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`;
+      }
+      function connect() {
+        if (socket) socket.close();
+        socket = new WebSocket(socketURL());
+        socket.onopen = () => status.textContent = `Connected to ${ids().client}${ids().session ? ` / ${ids().session}` : ''}`;
+        socket.onmessage = event => { events.textContent = `${event.data}\n${events.textContent}`; };
+        socket.onerror = () => status.textContent = 'Connection error';
+        socket.onclose = () => { status.textContent = 'Disconnected — change IDs or reload to reconnect'; };
+      }
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const { client, session } = ids();
+        const message = document.querySelector('#message').value;
+        const endpoint = session
+          ? `/api/clients/${encodeURIComponent(client)}/sessions/${encodeURIComponent(session)}/messages`
+          : `/api/clients/${encodeURIComponent(client)}/messages`;
+        fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        })
+          .then(response => {
+            if (!response.ok) throw new Error(`Publish failed (${response.status})`);
+            document.querySelector('#message').value = '';
+          })
+          .catch(error => status.textContent = error.message);
+      });
+      document.querySelector('#clientId').addEventListener('change', connect);
+      document.querySelector('#sessionId').addEventListener('change', connect);
+      connect();
+    </script>
+  </body>
+</html>
